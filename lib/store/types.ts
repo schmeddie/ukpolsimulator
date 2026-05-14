@@ -272,10 +272,40 @@ export interface GameSettings {
   soundEnabled: boolean;
 }
 
+// ─── Generated Scenario ───────────────────────────────────────────────────────
+
+export interface ScenarioCabinetMember {
+  role: string;
+  name: string;
+  party: Party;
+  description: string;
+}
+
+export interface ScenarioPartyResult {
+  seats: number;
+  votesPct: number;
+  swing: string;
+}
+
+export interface GeneratedScenario {
+  electionYear: number;
+  electionHeadline: string;
+  governmentParty: Party;
+  primeMinister: string;
+  majoritySize: number;          // negative = minority govt
+  politicalContext: string;
+  results: Partial<Record<Party, ScenarioPartyResult>>;
+  regionalResults: Record<string, Party>;  // UK region → winning party
+  cabinet: ScenarioCabinetMember[];
+  headlines: string[];
+  keyFacts: string[];
+}
+
 // ─── Full Game State ──────────────────────────────────────────────────────────
 
 export interface GameState {
   phase: GamePhase;
+  scenario: GeneratedScenario | null;
   player: Player | null;
   worldState: WorldState;
   npcs: NPC[];

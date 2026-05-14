@@ -19,9 +19,10 @@ import {
   Background,
   Party,
   PolicyArea,
+  GeneratedScenario,
 } from "./types";
 import { generateInitialNPCs } from "../gameData";
-import { addDays, formatISO } from "date-fns";
+import { addDays } from "date-fns";
 
 // ─── Default State ────────────────────────────────────────────────────────────
 
@@ -83,6 +84,7 @@ const BACKGROUND_BUFFS: Record<Background, Partial<Pick<Player, "charisma" | "in
 
 interface GameActions {
   // Game flow
+  setScenario: (scenario: GeneratedScenario) => void;
   startGame: (name: string, party: Party, background: Background, constituency: string) => void;
   advanceTurn: (days?: number) => void;
   resetGame: () => void;
@@ -210,6 +212,7 @@ export const useGameStore = create<GameState & GameActions>()(
     (set, get) => ({
       // ── Initial State ────────────────────────────────────────────────────────
       phase: "character-creation",
+      scenario: null,
       player: null,
       worldState: defaultWorldState,
       npcs: [],
@@ -264,6 +267,8 @@ export const useGameStore = create<GameState & GameActions>()(
       lastSaved: null,
 
       // ── Game Flow ────────────────────────────────────────────────────────────
+      setScenario: (scenario) => set({ scenario }),
+
       startGame: (name, party, background, constituency) => {
         const buffs = BACKGROUND_BUFFS[background];
         const baseStats = { charisma: 40, intelligence: 40, integrity: 50, ambition: 45 };
@@ -289,8 +294,30 @@ export const useGameStore = create<GameState & GameActions>()(
           achievements: [],
         };
 
-        const ws = { ...defaultWorldState };
-        const npcs = generateInitialNPCs(party);
+        // Build world state from scenario if available
+        const sc = get().scenario;
+        const ws: WorldState = sc
+          ? {
+              ...defaultWorldState,
+              currentDate: new Date(`${sc.electionYear}-01-15`),
+              governmentParty: sc.governmentParty,
+              oppositionParty: sc.results
+                ? (Object.entries(sc.results)
+                    .filter(([p]) => p !== sc.governmentParty)
+                    .sort(([, a], [, b]) => (b?.seats ?? 0) - (a?.seats ?? 0))[0]?.[0] as Party) ?? "Conservative"
+                : "Conservative",
+              polls: Object.fromEntries(
+                Object.entries(sc.results ?? {}).map(([p, r]) => [p, r?.votesPct ?? 0])
+              ) as Record<Party, number>,
+              nextElectionDays: 5 * 365,
+              electionYear: sc.electionYear + 5,
+              partyUnity:
+                party === sc.governmentParty ? 70 : 55,
+            }
+          : { ...defaultWorldState };
+
+        // Build NPCs: use scenario cabinet first, then random MPs
+        const npcs = generateInitialNPCs(party, sc?.cabinet ?? []);
         const inbox = buildWelcomeEmails(player, ws);
 
         // Seed first calendar events
@@ -381,6 +408,7 @@ export const useGameStore = create<GameState & GameActions>()(
       resetGame: () =>
         set({
           phase: "character-creation",
+          scenario: null,
           player: null,
           worldState: defaultWorldState,
           npcs: [],
@@ -585,6 +613,7 @@ export const useGameStore = create<GameState & GameActions>()(
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
         phase: state.phase,
+        scenario: state.scenario,
         player: state.player,
         worldState: state.worldState,
         npcs: state.npcs,

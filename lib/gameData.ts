@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
-import { NPC, Party, Role, PolicyArea, NPCTrait } from "./store/types";
+import { NPC, Party, Role, PolicyArea, NPCTrait, ScenarioCabinetMember } from "./store/types";
 
 // ─── UK Constituencies (sample 80) ───────────────────────────────────────────
 
@@ -165,36 +165,71 @@ const PARTY_DISTRIBUTION: Array<{ party: Party; count: number }> = [
   { party: "Independent", count: 2 },
 ];
 
-export function generateInitialNPCs(playerParty: Party): NPC[] {
+export function generateInitialNPCs(
+  playerParty: Party,
+  cabinetFromScenario: ScenarioCabinetMember[] = []
+): NPC[] {
   const npcs: NPC[] = [];
-  let ministerCount = 0;
+
+  // 1. Seed from AI-generated cabinet members first
+  for (const cm of cabinetFromScenario) {
+    const isCabinet = [
+      "Prime Minister", "Chancellor", "Home Secretary", "Foreign Secretary",
+      "Secretary of State", "Attorney General", "Lord Chancellor",
+    ].some((title) => cm.role.startsWith(title));
+
+    const roleMap: Record<string, Role> = {
+      "Prime Minister": "Prime Minister",
+      "Leader of the Opposition": "Leader of the Opposition",
+    };
+    const resolvedRole: Role = roleMap[cm.role] ??
+      (isCabinet ? "Cabinet Minister" : "Shadow Cabinet");
+
+    npcs.push({
+      id: uuidv4(),
+      name: cm.name,
+      party: cm.party,
+      role: resolvedRole,
+      constituency: randomFrom(CONSTITUENCIES),
+      traits: randomTraits(),
+      stances: randomStances(),
+      loyaltyToPlayer: cm.party === playerParty ? randomInt(15, 55) : randomInt(-50, 10),
+      personalRelationship: randomInt(-15, 15),
+      ministerialRole: isCabinet ? cm.role : undefined,
+      isInCabinet: isCabinet,
+      corruptionLevel: randomInt(0, 30),
+      personalityDescription: cm.description || randomFrom(PERSONALITIES),
+    });
+  }
+
+  // 2. Fill remaining 50 slots with random MPs
+  const targetTotal = Math.max(50, cabinetFromScenario.length + 35);
+  let ministerCount = cabinetFromScenario.filter((c) => c.role === "Cabinet Minister").length;
 
   for (const { party, count } of PARTY_DISTRIBUTION) {
-    for (let i = 0; i < count; i++) {
+    const alreadyAdded = npcs.filter((n) => n.party === party).length;
+    const toAdd = Math.max(0, count - alreadyAdded);
+    for (let i = 0; i < toAdd; i++) {
       const firstName = randomFrom(FIRST_NAMES);
       const lastName = randomFrom(LAST_NAMES);
-      const isInCabinet = party === "Conservative" && ministerCount < MINISTERIAL_ROLES.length && Math.random() > 0.6;
-      const ministerialRole = isInCabinet ? MINISTERIAL_ROLES[ministerCount] : undefined;
-      if (isInCabinet) ministerCount++;
-
-      const roles: Role[] = party === "Conservative"
-        ? ["Cabinet Minister", "Junior Minister", "Backbencher", "Parliamentary Private Secretary"]
-        : party === "Labour"
-        ? ["Shadow Cabinet", "Backbencher", "Parliamentary Private Secretary"]
+      const roles: Role[] = party === playerParty
+        ? ["Junior Minister", "Backbencher", "Parliamentary Private Secretary"]
+        : party === (npcs.find((n) => n.role === "Leader of the Opposition")?.party ?? "Conservative")
+        ? ["Shadow Cabinet", "Backbencher"]
         : ["Backbencher"];
 
       npcs.push({
         id: uuidv4(),
         name: `${firstName} ${lastName}`,
         party,
-        role: isInCabinet ? "Cabinet Minister" : randomFrom(roles),
+        role: randomFrom(roles),
         constituency: randomFrom(CONSTITUENCIES),
         traits: randomTraits(),
         stances: randomStances(),
         loyaltyToPlayer: party === playerParty ? randomInt(20, 60) : randomInt(-40, 20),
         personalRelationship: randomInt(-20, 20),
-        ministerialRole,
-        isInCabinet,
+        ministerialRole: undefined,
+        isInCabinet: false,
         corruptionLevel: randomInt(0, 40),
         personalityDescription: randomFrom(PERSONALITIES),
       });
@@ -203,6 +238,144 @@ export function generateInitialNPCs(playerParty: Party): NPC[] {
 
   return npcs;
 }
+
+// ─── Constituencies by Region (for map picker) ───────────────────────────────
+
+export const CONSTITUENCIES_BY_REGION: Record<string, string[]> = {
+  "Scotland": [
+    "Edinburgh North & Leith", "Edinburgh South", "Edinburgh East", "Edinburgh West",
+    "Glasgow Central", "Glasgow East", "Glasgow North East", "Glasgow South West",
+    "Aberdeen North", "Aberdeen South", "Dundee East", "Dundee West",
+    "Inverness & Nairn", "Perth & North Perthshire", "Stirling",
+    "Ayr, Carrick & Cumnock", "Kilmarnock & Loudoun", "Dumfries & Galloway",
+    "Falkirk", "Livingston", "Motherwell & Wishaw",
+  ],
+  "Northern Ireland": [
+    "Belfast East", "Belfast South", "Belfast North", "Belfast West",
+    "Foyle (Derry)", "Newry & Armagh", "East Antrim", "North Antrim",
+    "Strangford", "Upper Bann", "East Londonderry", "South Down",
+  ],
+  "North East England": [
+    "Newcastle upon Tyne Central", "Newcastle upon Tyne East", "Newcastle upon Tyne North",
+    "Sunderland Central", "Houghton & Sunderland South", "Washington & Gateshead South",
+    "Middlesbrough", "Middlesbrough South & East Cleveland", "Stockton North",
+    "Stockton South", "Durham North West", "City of Durham",
+    "Hartlepool", "Hexham", "Berwick-upon-Tweed",
+  ],
+  "North West England": [
+    "Manchester Central", "Manchester Gorton", "Manchester Withington",
+    "Salford & Eccles", "Stretford & Urmston", "Wythenshawe & Sale East",
+    "Liverpool Riverside", "Liverpool West Derby", "Liverpool Walton",
+    "Liverpool Wavertree", "Birkenhead", "Wallasey",
+    "Warrington North", "Warrington South",
+    "Blackburn", "Blackpool South", "Preston", "Lancaster & Fleetwood",
+    "Wigan", "Makerfield", "Bolton South East", "Bolton West",
+    "Oldham West & Royton", "Rochdale", "Bury North", "Bury South",
+    "Cheadle", "Hazel Grove", "Macclesfield", "Tatton",
+  ],
+  "Yorkshire & the Humber": [
+    "Leeds Central", "Leeds East", "Leeds West", "Leeds North West",
+    "Sheffield Hallam", "Sheffield Central", "Sheffield Brightside & Hillsborough",
+    "Bradford East", "Bradford West", "Bradford South",
+    "Huddersfield", "Halifax", "Dewsbury",
+    "York Central", "York Outer",
+    "Doncaster Central", "Barnsley East", "Rotherham",
+    "Kingston upon Hull North", "Hull East", "Hull West & Hessle",
+    "Beverley & Holderness", "Scarborough & Whitby",
+    "Thirsk & Malton", "Skipton & Ripon",
+  ],
+  "East Midlands": [
+    "Leicester East", "Leicester South", "Leicester West",
+    "Loughborough", "Harborough", "Bosworth", "North West Leicestershire", "Hinckley & Bosworth",
+    "Nottingham South", "Nottingham East", "Nottingham North",
+    "Rushcliffe", "Broxtowe", "Gedling",
+    "Derby North", "Derby South", "Erewash", "Mid Derbyshire",
+    "Lincoln", "Grantham & Stamford", "Boston & Skegness",
+    "South Holland & The Deepings", "Rutland & Melton",
+    "Daventry", "Northampton South", "Northampton North",
+    "Corby", "Kettering", "Wellingborough", "Rushden",
+  ],
+  "West Midlands": [
+    "Birmingham Ladywood", "Birmingham Edgbaston", "Birmingham Selly Oak",
+    "Birmingham Northfield", "Birmingham Hall Green", "Birmingham Perry Barr",
+    "Birmingham Yardley", "Birmingham Erdington",
+    "Coventry South", "Coventry North East", "Coventry North West",
+    "Wolverhampton South East", "Wolverhampton South West", "Wolverhampton North East",
+    "Walsall South", "Walsall North",
+    "Stoke-on-Trent Central", "Stoke-on-Trent North", "Stoke-on-Trent South",
+    "Hereford & South Herefordshire", "Worcester", "Redditch",
+    "Shrewsbury & Atcham", "Telford", "Lichfield",
+  ],
+  "Wales": [
+    "Cardiff Central", "Cardiff North", "Cardiff West", "Cardiff South & Penarth",
+    "Swansea East", "Swansea West", "Neath",
+    "Rhondda", "Pontypridd", "Caerphilly",
+    "Newport East", "Newport West", "Torfaen",
+    "Wrexham", "Clwyd South", "Clwyd West", "Vale of Clwyd",
+    "Aberavon", "Bridgend", "Ogmore",
+    "Ynys Môn (Anglesey)", "Arfon", "Dwyfor Meirionnydd",
+    "Ceredigion", "Brecon & Radnorshire", "Montgomeryshire",
+  ],
+  "East of England": [
+    "Cambridge", "South Cambridgeshire", "North East Cambridgeshire",
+    "Huntingdon", "Peterborough",
+    "Ipswich", "South Suffolk", "Suffolk Coastal", "Waveney",
+    "Norwich South", "Norwich North", "Great Yarmouth",
+    "Bedford", "Mid Bedfordshire", "Luton South", "Luton North",
+    "Stevenage", "Welwyn Hatfield", "Hertford & Stortford", "St Albans",
+    "Watford", "Hemel Hempstead", "Hitchin & Harpenden",
+    "Colchester", "Chelmsford", "Basildon & Billericay",
+    "Southend West", "Clacton", "Harlow", "Braintree",
+    "Thurrock", "Castle Point", "Rayleigh & Wickford",
+  ],
+  "London": [
+    "Hackney North & Stoke Newington", "Islington North", "Tottenham", "Hornsey & Wood Green",
+    "Vauxhall", "Bermondsey & Old Southwark", "Greenwich & Woolwich",
+    "Lewisham East", "Streatham", "Dulwich & West Norwood",
+    "Tooting", "Mitcham & Morden", "Wimbledon",
+    "Battersea", "Putney", "Richmond Park",
+    "Hammersmith", "Chelsea & Fulham", "Kensington",
+    "Cities of London & Westminster", "Holborn & St Pancras",
+    "Hampstead & Kilburn", "Hendon", "Finchley & Golders Green", "Barnet",
+    "Poplar & Limehouse", "Bethnal Green & Bow", "West Ham", "East Ham",
+    "Ilford North", "Ilford South", "Chingford & Wood Green",
+    "Enfield Southgate", "Enfield North",
+    "Harrow East", "Harrow West", "Brent Central",
+    "Uxbridge & Ruislip South", "Ealing Central", "Ealing North",
+    "Brentford & Isleworth", "Feltham & Heston", "Hayes & Harlington",
+    "Croydon Central", "Croydon North", "Croydon South",
+    "Sutton & Cheam", "Carshalton & Wallington",
+  ],
+  "South East England": [
+    "Brighton Pavilion", "Brighton Kemptown", "Hove", "Lewes",
+    "Eastbourne", "Hastings & Rye", "Bexhill & Battle",
+    "Canterbury", "Folkestone & Hythe", "Dover", "Thanet South", "North Thanet",
+    "Maidstone & The Weald", "Tonbridge & Malling", "Tunbridge Wells",
+    "Sevenoaks", "Faversham & Mid Kent", "Chatham & Aylesford",
+    "Rochester & Strood", "Sittingbourne & Sheppey",
+    "Horsham", "Arundel & South Downs", "Worthing West", "Crawley",
+    "Reigate", "Surrey Heath", "Guildford", "Woking",
+    "Winchester", "Eastleigh", "Southampton Test", "Southampton Itchen",
+    "Portsmouth South", "Portsmouth North", "Isle of Wight",
+    "Aldershot", "Farnham",
+    "Slough", "Windsor", "Maidenhead", "Reading East", "Reading West",
+    "Oxford East", "Oxford West & Abingdon", "Banbury", "Witney",
+  ],
+  "South West England": [
+    "Bristol West", "Bristol South", "Bristol East", "Bristol North West",
+    "Bath", "Weston-super-Mare", "Wells", "Somerton & Frome",
+    "Taunton", "Bridgwater & West Somerset", "Yeovil",
+    "Exeter", "East Devon", "Tiverton & Honiton",
+    "Plymouth Sutton & Devonport", "Plymouth Moor View",
+    "Totnes", "Torridge & Tavistock", "Newton Abbot",
+    "Truro & Falmouth", "St Ives", "St Austell & Newquay",
+    "Camborne & Redruth", "North Cornwall", "South East Cornwall",
+    "Cheltenham", "Gloucester", "Stroud", "Forest of Dean",
+    "North Cotswolds", "South Cotswolds",
+    "Bournemouth East", "Bournemouth West", "Poole", "Christchurch",
+    "Dorchester", "Weymouth & Portland", "Mid Dorset & North Poole",
+  ],
+};
 
 // ─── Static Headlines Pool (for non-AI turns) ─────────────────────────────────
 
