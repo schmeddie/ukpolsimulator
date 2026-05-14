@@ -151,6 +151,31 @@ Keep responses under 4 sentences. Reference real UK political context.
 Your loyalty to the player is ${opponent.loyaltyToPlayer}/100 (negative = hostile).`;
 }
 
+export function buildReplyEmailPrompt(targetName: string, targetRole: string, userSubject: string, userBody: string, player: Player, worldState: WorldState): string {
+  return `You are ${targetName}, ${targetRole} in the UK.
+${buildWorldContext(player, worldState)}
+
+The player (${player.name}) has just emailed you:
+SUBJECT: ${userSubject}
+BODY: ${userBody}
+
+Write your realistic reply. Stay in character. If they are asking for a favor or demanding action, decide if you would help based on your role, the current political climate, and your relationship.
+Return ONLY valid JSON matching this schema:
+{
+  "subject": "Re: ${userSubject}",
+  "body": "Your email reply text here"
+}`;
+}
+
+export function buildNPCProfilePrompt(name: string, role: string, description: string, player: Player, worldState: WorldState): string {
+  return `Generate a detailed political profile and psychological assessment for ${name}, ${role}.
+General background: ${description}
+${buildWorldContext(player, worldState)}
+
+Provide a 2-paragraph dossier on their career history, political leanings, vulnerabilities, and how they currently view the player (${player.name}).
+Be analytical, slightly cynical, and highly realistic to British politics.`;
+}
+
 export function buildEmailSystemPrompt(player: Player, worldState: WorldState): string {
   return `You generate realistic UK political emails for a politics simulation game.
 ${buildWorldContext(player, worldState)}

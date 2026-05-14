@@ -22,7 +22,28 @@ import {
   GeneratedScenario,
 } from "./types";
 import { generateInitialNPCs } from "../gameData";
-import { addDays } from "date-fns";
+import { addDays, addHours } from "date-fns";
+import { generateAIResponse, buildEmailSystemPrompt, buildReplyEmailPrompt, buildNPCProfilePrompt } from "../ai/aiClient";
+
+// ─── Extended Types ───────────────────────────────────────────────────────────
+
+export interface StaffMember {
+  id: string;
+  name: string;
+  role: string;
+  competence: number;
+  loyalty: number;
+  personality: string;
+  profileStr?: string; // Stored AI-generated profile
+}
+
+export interface FreeformEmail {
+  id: string;
+  to: string;
+  subject: string;
+  body: string;
+  date: Date;
+}
 
 // ─── Default State ────────────────────────────────────────────────────────────
 
@@ -82,11 +103,17 @@ const BACKGROUND_BUFFS: Record<Background, Partial<Pick<Player, "charisma" | "in
 
 // ─── Store Actions Type ───────────────────────────────────────────────────────
 
+interface ExtendedState {
+  staff: StaffMember[];
+  sentEmails: FreeformEmail[];
+  isAdvancing: boolean; // Use this to disable the advance button in UI while AI loads
+}
+
 interface GameActions {
   // Game flow
   setScenario: (scenario: GeneratedScenario) => void;
   startGame: (name: string, party: Party, background: Background, constituency: string) => void;
-  advanceTurn: (days?: number) => void;
+  advanceTurn: () => Promise<void>;
   resetGame: () => void;
 
   // Player
@@ -100,6 +127,7 @@ interface GameActions {
   addEmail: (email: Omit<Email, "id" | "date" | "read">) => void;
   markEmailRead: (id: string) => void;
   chooseEmailOption: (emailId: string, choiceId: string) => void;
+  sendFreeformEmail: (toName: string, toRole: string, subject: string, body: string) => Promise<void>;
 
   // Policy
   addPolicy: (policy: Omit<Policy, "id" | "introducedDate" | "status" | "votesFor" | "votesAgainst" | "abstentions">) => void;
@@ -123,6 +151,7 @@ interface GameActions {
 
   // NPCs
   updateNPCRelationship: (npcId: string, delta: number) => void;
+  generateProfile: (id: string, isStaff: boolean) => Promise<string | null>;
 }
 
 // ─── Initial Inbox Emails ─────────────────────────────────────────────────────
@@ -207,7 +236,7 @@ function buildWelcomeEmails(player: Player, worldState: WorldState): Email[] {
 
 // ─── Zustand Store ────────────────────────────────────────────────────────────
 
-export const useGameStore = create<GameState & GameActions>()(
+export const useGameStore = create<GameState & ExtendedState & GameActions>()(
   persist(
     (set, get) => ({
       // ── Initial State ────────────────────────────────────────────────────────
@@ -216,7 +245,9 @@ export const useGameStore = create<GameState & GameActions>()(
       player: null,
       worldState: defaultWorldState,
       npcs: [],
+      staff: [],
       inbox: [],
+      sentEmails: [],
       policies: [],
       news: [
         {
@@ -265,6 +296,7 @@ export const useGameStore = create<GameState & GameActions>()(
       settings: defaultSettings,
       turnCount: 0,
       lastSaved: null,
+      isAdvancing: false,
 
       // ── Game Flow ────────────────────────────────────────────────────────────
       setScenario: (scenario) => set({ scenario }),
@@ -319,6 +351,13 @@ export const useGameStore = create<GameState & GameActions>()(
         // Build NPCs: use scenario cabinet first, then random MPs
         const npcs = generateInitialNPCs(party, sc?.cabinet ?? []);
         const inbox = buildWelcomeEmails(player, ws);
+        
+        // Generate immediate staff team
+        const staff: StaffMember[] = [
+          { id: uuidv4(), name: "Samira Patel", role: "Chief of Staff", competence: 80, loyalty: 90, personality: "Highly organized, fiercely protective." },
+          { id: uuidv4(), name: "Tom Jenkins", role: "Head of Communications", competence: 75, loyalty: 70, personality: "Media-obsessed spinner, slightly cynical." },
+          { id: uuidv4(), name: "Eleanor Vance", role: "Constituency Manager", competence: 85, loyalty: 80, personality: "Deeply embedded in local issues, warm but stressed." }
+        ];
 
         // Seed first calendar events
         const calendar: CalendarEvent[] = [
@@ -347,62 +386,81 @@ export const useGameStore = create<GameState & GameActions>()(
           player,
           worldState: ws,
           npcs,
+          staff,
           inbox,
+          sentEmails: [],
           calendar,
           turnCount: 0,
           lastSaved: new Date(),
+          isAdvancing: false,
         });
       },
 
-      advanceTurn: (days = 7) => {
+      advanceTurn: async () => {
         const state = get();
-        if (!state.player) return;
+        if (!state.player || state.isAdvancing) return;
 
-        const newDate = addDays(state.worldState.currentDate, days);
-        const daysToElection = Math.max(0, state.worldState.nextElectionDays - days);
+        set({ isAdvancing: true });
 
-        // Mild random world drift
-        const moodDrift = (Math.random() - 0.5) * 4;
-        const unityDrift = (Math.random() - 0.5) * 3;
+        try {
+          const now = state.worldState.currentDate;
+          const upcoming = state.calendar.filter(e => new Date(e.date) > now).sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+          
+          // Jump to the next event, but max out at 24 hours of idle time
+          let nextDate = upcoming.length > 0 ? new Date(upcoming[0].date) : addHours(now, 24);
+          const maxAdvanceMs = 24 * 60 * 60 * 1000;
+          if (nextDate.getTime() - now.getTime() > maxAdvanceMs) {
+              nextDate = new Date(now.getTime() + maxAdvanceMs);
+          }
 
-        // Generate a random news item (non-AI)
-        const staticHeadlines = [
-          { headline: "Chancellor hints at pre-election tax cut", sentiment: "positive" as const, source: "The Sun" },
-          { headline: "NHS waiting list hits record 7.8 million", sentiment: "negative" as const, source: "BBC Health" },
-          { headline: "Housing starts fall for third consecutive quarter", sentiment: "negative" as const, source: "Financial Times" },
-          { headline: "PM's approval rating edges up after trade deal announcement", sentiment: "positive" as const, source: "YouGov" },
-          { headline: "Backbenchers threaten rebellion over Rwanda plan", sentiment: "negative" as const, source: "The Guardian" },
-          { headline: "Energy bills to fall 7% from next quarter", sentiment: "positive" as const, source: "BBC Business" },
-          { headline: "Strike action averted as rail unions accept deal", sentiment: "positive" as const, source: "PA Media" },
-          { headline: "Foreign Secretary summoned over ambassador gaffe", sentiment: "negative" as const, source: "Sky News" },
-          { headline: "Party conference season: internal splits dominate coverage", sentiment: "negative" as const, source: "Political Quarterly" },
-          { headline: "New polling shows voters want more NHS investment above tax cuts", sentiment: "neutral" as const, source: "Opinium" },
-        ];
-        const picked = staticHeadlines[Math.floor(Math.random() * staticHeadlines.length)];
-        const newNews: NewsItem = {
-          id: uuidv4(),
-          headline: picked.headline,
-          date: newDate,
-          sentiment: picked.sentiment,
-          aiGenerated: false,
-          source: picked.source,
-        };
+          // Roll to see if a random AI event intercepts the timeline before nextDate (40% chance if AI enabled)
+          let generatedEmail = null;
+          if (state.settings.ai.enabled && Math.random() < 0.4) {
+             const randomMs = Math.random() * (nextDate.getTime() - now.getTime());
+             nextDate = new Date(now.getTime() + randomMs);
 
-        set((s) => ({
-          worldState: {
-            ...s.worldState,
-            currentDate: newDate,
-            nextElectionDays: daysToElection,
-            publicMood: Math.max(-100, Math.min(100, s.worldState.publicMood + moodDrift)),
-            partyUnity: Math.max(0, Math.min(100, s.worldState.partyUnity + unityDrift)),
-          },
-          news: [newNews, ...s.news].slice(0, 50),
-          turnCount: s.turnCount + 1,
-          lastSaved: new Date(),
-          player: s.player
-            ? { ...s.player, experience: s.player.experience + 1 }
-            : null,
-        }));
+             try {
+                const rawJson = await generateAIResponse({
+                   settings: state.settings.ai,
+                   systemPrompt: buildEmailSystemPrompt(state.player, state.worldState),
+                   userPrompt: "Generate a new spontaneous email event for the player. Output valid JSON only.",
+                   maxTokens: 350
+                });
+                const cleanJson = rawJson.replace(/^```(?:json)?/m, "").replace(/```$/m, "").trim();
+                generatedEmail = JSON.parse(cleanJson);
+             } catch (err) {
+                console.warn("AI Email generation failed:", err);
+             }
+          }
+
+          const hoursPassed = (nextDate.getTime() - now.getTime()) / (1000 * 60 * 60);
+          const daysPassed = hoursPassed / 24;
+
+          const daysToElection = Math.max(0, state.worldState.nextElectionDays - daysPassed);
+          const moodDrift = (Math.random() - 0.5) * 4 * daysPassed;
+          const unityDrift = (Math.random() - 0.5) * 3 * daysPassed;
+
+          set((s) => ({
+            worldState: {
+              ...s.worldState,
+              currentDate: nextDate,
+              nextElectionDays: daysToElection,
+              publicMood: Math.max(-100, Math.min(100, s.worldState.publicMood + moodDrift)),
+              partyUnity: Math.max(0, Math.min(100, s.worldState.partyUnity + unityDrift)),
+            },
+            turnCount: s.turnCount + 1,
+            lastSaved: new Date(),
+            isAdvancing: false,
+            player: s.player ? { ...s.player, experience: s.player.experience + (daysPassed * 0.1) } : null,
+          }));
+
+          if (generatedEmail) {
+             get().addEmail({ ...generatedEmail, date: nextDate, aiGenerated: true, read: false, urgent: generatedEmail.urgent || false });
+          }
+        } catch (error) {
+          console.error("Advance Turn failed:", error);
+          set({ isAdvancing: false });
+        }
       },
 
       resetGame: () =>
@@ -412,12 +470,15 @@ export const useGameStore = create<GameState & GameActions>()(
           player: null,
           worldState: defaultWorldState,
           npcs: [],
+          staff: [],
           inbox: [],
+          sentEmails: [],
           policies: [],
           news: [],
           calendar: [],
           dispatchBoxHistory: [],
           turnCount: 0,
+          isAdvancing: false,
         }),
 
       // ── Player ───────────────────────────────────────────────────────────────
@@ -467,6 +528,45 @@ export const useGameStore = create<GameState & GameActions>()(
         set((s) => ({
           inbox: s.inbox.map((e) => (e.id === id ? { ...e, read: true } : e)),
         })),
+
+      sendFreeformEmail: async (toName, toRole, subject, body) => {
+        const state = get();
+        if (!state.player) return;
+
+        // 1. Record the sent email
+        const newSent: FreeformEmail = {
+          id: uuidv4(),
+          to: toName,
+          subject,
+          body,
+          date: state.worldState.currentDate,
+        };
+        set((s) => ({ sentEmails: [newSent, ...s.sentEmails] }));
+
+        if (!state.settings.ai.enabled) {
+          get().addEmail({ from: toName, fromRole: toRole, subject: "Re: " + subject, body: "I have received your email, but my AI assistant is currently offline.", aiGenerated: false, urgent: false });
+          return;
+        }
+
+        // 2. Query AI for a reply
+        try {
+          const prompt = buildReplyEmailPrompt(toName, toRole, subject, body, state.player, state.worldState);
+          const rawJson = await generateAIResponse({
+            settings: state.settings.ai,
+            systemPrompt: prompt,
+            userPrompt: "Write a reply to the player's email. Output valid JSON only.",
+            maxTokens: 300
+          });
+          const cleanJson = rawJson.replace(/^```(?:json)?/m, "").replace(/```$/m, "").trim();
+          const reply = JSON.parse(cleanJson);
+
+          // Fast-forward 30 minutes for the response
+          const replyDate = new Date(state.worldState.currentDate.getTime() + 30 * 60 * 1000);
+          get().addEmail({ from: toName, fromRole: toRole, subject: reply.subject || "Re: " + subject, body: reply.body, aiGenerated: true, urgent: false });
+        } catch (err) {
+          console.error("Failed to generate email reply", err);
+        }
+      },
 
       chooseEmailOption: (emailId, choiceId) =>
         set((s) => {
@@ -607,6 +707,36 @@ export const useGameStore = create<GameState & GameActions>()(
               : n
           ),
         })),
+
+      generateProfile: async (id, isStaff) => {
+        const state = get();
+        if (!state.player || !state.settings.ai.enabled) return null;
+
+        let targetName = ""; let targetRole = ""; let targetDesc = "";
+
+        if (isStaff) {
+          const s = state.staff.find(x => x.id === id);
+          if (!s) return null;
+          targetName = s.name; targetRole = s.role; targetDesc = s.personality;
+        } else {
+          const n = state.npcs.find(x => x.id === id);
+          if (!n) return null;
+          targetName = n.name; targetRole = n.role; targetDesc = n.personalityDescription;
+        }
+
+        try {
+          const prompt = buildNPCProfilePrompt(targetName, targetRole, targetDesc, state.player, state.worldState);
+          const profileText = await generateAIResponse({ settings: state.settings.ai, systemPrompt: "You are an expert political profiler.", userPrompt: prompt, maxTokens: 400 });
+          
+          if (isStaff) set((s) => ({ staff: s.staff.map(st => st.id === id ? { ...st, profileStr: profileText } : st) }));
+          else set((s) => ({ npcs: s.npcs.map(npc => npc.id === id ? ({ ...npc, profileStr: profileText } as any) : npc) }));
+          
+          return profileText;
+        } catch (err) {
+          console.error("Profile gen failed", err);
+          return null;
+        }
+      }
     }),
     {
       name: "westminster-save",
@@ -617,7 +747,9 @@ export const useGameStore = create<GameState & GameActions>()(
         player: state.player,
         worldState: state.worldState,
         npcs: state.npcs,
+        staff: state.staff,
         inbox: state.inbox,
+        sentEmails: state.sentEmails,
         policies: state.policies,
         news: state.news,
         calendar: state.calendar,
