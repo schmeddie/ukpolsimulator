@@ -11,6 +11,10 @@ export function formatGameDate(date: Date | string): string {
   return format(new Date(date), "d MMMM yyyy");
 }
 
+export function formatGameDateTime(date: Date | string): string {
+  return format(new Date(date), "d MMMM yyyy, HH:mm");
+}
+
 export function formatShortDate(date: Date | string): string {
   return format(new Date(date), "dd MMM");
 }

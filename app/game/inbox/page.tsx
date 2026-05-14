@@ -5,9 +5,10 @@ import { Mail, MailOpen, AlertTriangle, Zap, RefreshCw, ChevronLeft } from "luci
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { useGameStore } from "@/lib/store/useGameStore";
-import { formatGameDate, formatRelativeDate, cn } from "@/lib/utils";
+import { formatGameDateTime, formatRelativeDate, cn } from "@/lib/utils";
 import {
   generateAIResponse,
   buildEmailSystemPrompt,
@@ -79,16 +80,19 @@ function EmailListItem({
 }
 
 export default function InboxPage() {
-  const { player, worldState, inbox, markEmailRead, chooseEmailOption, addEmail, settings } = useGameStore();
+  const { player, worldState, inbox, sentEmails, markEmailRead, chooseEmailOption, addEmail, sendFreeformEmail, settings } = useGameStore();
   const [selectedId, setSelectedId] = useState<string | null>(inbox[0]?.id ?? null);
   const [generating, setGenerating] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState("");
+  const [sendingReply, setSendingReply] = useState(false);
 
   const selectedEmail = inbox.find((e) => e.id === selectedId) ?? null;
 
   const handleSelect = (email: Email) => {
     setSelectedId(email.id);
     if (!email.read) markEmailRead(email.id);
+    setReplyText("");
   };
 
   const handleChoice = (emailId: string, choiceId: string) => {
@@ -128,6 +132,20 @@ export default function InboxPage() {
       setAiError(err instanceof Error ? err.message : "Failed to generate email.");
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const handleSendReply = async () => {
+    if (!selectedEmail || !replyText.trim()) return;
+    setSendingReply(true);
+    try {
+      await sendFreeformEmail(selectedEmail.from, selectedEmail.fromRole, selectedEmail.subject, replyText.trim());
+      setReplyText("");
+    } catch (err) {
+      console.error(err);
+      setAiError("Failed to send reply.");
+    } finally {
+      setSendingReply(false);
     }
   };
 
@@ -203,7 +221,7 @@ export default function InboxPage() {
                       <span className="text-muted-foreground/60 ml-1">· {selectedEmail.fromRole}</span>
                     </span>
                     <span>·</span>
-                    <span>{formatGameDate(selectedEmail.date)}</span>
+                    <span>{formatGameDateTime(selectedEmail.date)}</span>
                     {selectedEmail.urgent && (
                       <Badge variant="warning" className="text-[10px]">URGENT</Badge>
                     )}
@@ -273,6 +291,24 @@ export default function InboxPage() {
                       ))}
                     </div>
                   )}
+                </div>
+              ) : (
+                <div className="mt-6 space-y-3">
+                  <Separator className="mb-4" />
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    Write a Reply
+                  </p>
+                  <Textarea 
+                    value={replyText}
+                    onChange={(e) => setReplyText(e.target.value)}
+                    placeholder="Type your response here... The AI will read this and reply."
+                    className="min-h-[100px] text-sm"
+                  />
+                  <div className="flex justify-end">
+                    <Button onClick={handleSendReply} disabled={!replyText.trim() || sendingReply}>
+                      {sendingReply ? "Sending..." : "Send Freeform Reply"}
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>

@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useGameStore } from "@/lib/store/useGameStore";
-import { formatGameDate, formatShortDate, cn } from "@/lib/utils";
+import { formatGameDate, formatGameDateTime, formatShortDate, cn } from "@/lib/utils";
 
 const EVENT_TYPE_COLOURS: Record<string, string> = {
   PMQs: "bg-red-500/10 text-red-400 border-red-500/20",
@@ -39,7 +39,7 @@ export default function CalendarPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-foreground">Parliamentary Calendar</h1>
-          <p className="text-sm text-muted-foreground">Current date: {formatGameDate(worldState.currentDate)}</p>
+          <p className="text-sm text-muted-foreground">Current time: {formatGameDateTime(worldState.currentDate)}</p>
         </div>
       </div>
 

@@ -403,8 +403,17 @@ export const useGameStore = create<GameState & ExtendedState & GameActions>()(
         set({ isAdvancing: true });
 
         try {
-          const now = state.worldState.currentDate;
-          const upcoming = state.calendar.filter(e => new Date(e.date) > now).sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+          // Wrap in new Date() to prevent crashes after loading from localStorage (where it becomes a string)
+          const now = new Date(state.worldState.currentDate);
+
+          // Block advancement if there is a pending mandatory event at or before the current time
+          const currentMandatory = state.calendar.find(e => new Date(e.date).getTime() <= now.getTime() && e.mandatory && !e.attended);
+          if (currentMandatory) {
+             set({ isAdvancing: false });
+             return; // Stops time completely until the player goes to the calendar and resolves it
+          }
+
+          const upcoming = state.calendar.filter(e => new Date(e.date) > now && !e.attended).sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
           
           // Jump to the next event, but max out at 24 hours of idle time
           let nextDate = upcoming.length > 0 ? new Date(upcoming[0].date) : addHours(now, 24);
@@ -517,7 +526,7 @@ export const useGameStore = create<GameState & ExtendedState & GameActions>()(
             {
               ...email,
               id: uuidv4(),
-              date: s.worldState.currentDate,
+              date: email.date || s.worldState.currentDate,
               read: false,
             },
             ...s.inbox,
@@ -561,8 +570,8 @@ export const useGameStore = create<GameState & ExtendedState & GameActions>()(
           const reply = JSON.parse(cleanJson);
 
           // Fast-forward 30 minutes for the response
-          const replyDate = new Date(state.worldState.currentDate.getTime() + 30 * 60 * 1000);
-          get().addEmail({ from: toName, fromRole: toRole, subject: reply.subject || "Re: " + subject, body: reply.body, aiGenerated: true, urgent: false });
+          const replyDate = new Date(new Date(state.worldState.currentDate).getTime() + 30 * 60 * 1000);
+          get().addEmail({ from: toName, fromRole: toRole, subject: reply.subject || "Re: " + subject, body: reply.body, aiGenerated: true, urgent: false, date: replyDate });
         } catch (err) {
           console.error("Failed to generate email reply", err);
         }
@@ -585,7 +594,7 @@ export const useGameStore = create<GameState & ExtendedState & GameActions>()(
             if (ef.localApproval !== undefined) playerUpdates.localApproval = Math.max(0, Math.min(100, s.player.localApproval + ef.localApproval));
             if (ef.integrity !== undefined) playerUpdates.integrity = Math.max(0, Math.min(100, s.player.integrity + ef.integrity));
             if (ef.charisma !== undefined) playerUpdates.charisma = Math.max(0, Math.min(100, s.player.charisma + ef.charisma));
-            if (ef.wealth !== undefined) playerUpdates.wealth = s.player.wealth + ef.wealth;
+            if (ef.wealth !== undefined) playerUpdates.wealth = Math.max(0, s.player.wealth + ef.wealth);
             if (ef.mediaProfile !== undefined) playerUpdates.mediaProfile = Math.max(0, Math.min(100, s.player.mediaProfile + ef.mediaProfile));
           }
           if (ef.publicMood !== undefined) worldUpdates.publicMood = Math.max(-100, Math.min(100, s.worldState.publicMood + ef.publicMood));
@@ -622,29 +631,71 @@ export const useGameStore = create<GameState & ExtendedState & GameActions>()(
           const policy = s.policies.find((p) => p.id === policyId);
           if (!policy || !s.player) return {};
 
-          // Calculate vote outcome based on party unity + charisma
-          const partyBonus = s.worldState.partyUnity / 100;
-          const charismaBonus = s.player.charisma / 200;
-          const basePassChance = 0.4 + partyBonus * 0.4 + charismaBonus * 0.2;
-          const passed = Math.random() < basePassChance;
+          let votesFor = 0;
+          let votesAgainst = 0;
+          let abstentions = 0;
 
-          const totalMPs = 650;
-          const votesFor = passed
-            ? Math.floor(totalMPs * (0.5 + Math.random() * 0.15))
-            : Math.floor(totalMPs * (0.35 + Math.random() * 0.15));
-          const votesAgainst = totalMPs - votesFor - Math.floor(Math.random() * 20);
+          // Simulate authentic votes from all generated NPCs
+          s.npcs.forEach((npc) => {
+            let voteScore = 0;
+
+            // Party loyalty and player relations
+            if (npc.party === s.player!.party) {
+              voteScore += s.worldState.partyUnity / 2;
+              voteScore += npc.loyaltyToPlayer / 2;
+            } else {
+              voteScore -= 20; // Default opposition resistance
+            }
+
+            // Personal stance on the policy area (-80 to 80)
+            const stance = npc.stances[policy.area] || 0;
+            voteScore += stance / 2;
+
+            // Randomness/Rebellion factor
+            voteScore += (Math.random() * 40 - 20);
+
+            if (voteScore > 15) votesFor++;
+            else if (voteScore < -15) votesAgainst++;
+            else abstentions++;
+          });
+
+          const passed = votesFor > votesAgainst;
 
           const approvalDelta = passed ? 3 : -2;
           const unityDelta = passed ? 2 : -4;
 
+          const worldUpdates: Partial<WorldState> = {
+             partyUnity: Math.max(0, Math.min(100, s.worldState.partyUnity + unityDelta))
+          };
+
+          // Apply the real economic/social effects of the policy sliders to the country
+          if (passed) {
+             policy.parameters.forEach(param => {
+                 if (param.key.includes("funding_bn") || param.key.includes("investment_bn")) {
+                     worldUpdates.inflation = Number((s.worldState.inflation + (param.value * 0.1)).toFixed(2));
+                     worldUpdates.gdpGrowth = Number((s.worldState.gdpGrowth + (param.value * 0.05)).toFixed(2));
+                 }
+                 if (param.key.includes("target_wait_weeks")) {
+                     worldUpdates.nhsWaitTimesWeeks = Math.max(4, param.value);
+                 }
+                 if (param.key.includes("payment_gbp")) {
+                     worldUpdates.inflation = Number((s.worldState.inflation + (param.value * 0.001)).toFixed(2));
+                     worldUpdates.publicMood = Math.min(100, s.worldState.publicMood + 5);
+                 }
+                 if (param.key.includes("homes_target")) {
+                     worldUpdates.gdpGrowth = Number((s.worldState.gdpGrowth + (param.value * 0.000001)).toFixed(2));
+                 }
+             });
+          }
+
           return {
             policies: s.policies.map((p) =>
               p.id === policyId
-                ? { ...p, status: passed ? "passed" : "failed", votesFor, votesAgainst, abstentions: totalMPs - votesFor - votesAgainst }
+                ? { ...p, status: passed ? "passed" : "failed", votesFor, votesAgainst, abstentions }
                 : p
             ),
-            player: { ...s.player, approvalRating: Math.max(0, Math.min(100, s.player.approvalRating + approvalDelta)) },
-            worldState: { ...s.worldState, partyUnity: Math.max(0, Math.min(100, s.worldState.partyUnity + unityDelta)) },
+            player: { ...s.player!, approvalRating: Math.max(0, Math.min(100, s.player!.approvalRating + approvalDelta)) },
+            worldState: { ...s.worldState, ...worldUpdates },
           };
         }),
 
