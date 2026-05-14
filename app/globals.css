@@ -1,0 +1,97 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 224 71.4% 4.1%;
+    --foreground: 210 20% 98%;
+    --card: 224 71.4% 6.5%;
+    --card-foreground: 210 20% 98%;
+    --popover: 224 71.4% 6.5%;
+    --popover-foreground: 210 20% 98%;
+    --primary: 142.1 70.6% 45.3%;
+    --primary-foreground: 144.9 80.4% 10%;
+    --secondary: 215 27.9% 16.9%;
+    --secondary-foreground: 210 20% 98%;
+    --muted: 215 27.9% 16.9%;
+    --muted-foreground: 217.9 10.6% 64.9%;
+    --accent: 215 27.9% 16.9%;
+    --accent-foreground: 210 20% 98%;
+    --destructive: 0 72.2% 50.6%;
+    --destructive-foreground: 210 20% 98%;
+    --border: 215 27.9% 16.9%;
+    --input: 215 27.9% 16.9%;
+    --ring: 142.4 71.8% 29.2%;
+    --radius: 0.5rem;
+
+    /* Sidebar */
+    --sidebar-bg: 224 71.4% 3.2%;
+    --sidebar-border: 215 27.9% 12%;
+    --sidebar-item-hover: 215 27.9% 10%;
+    --sidebar-item-active: 142.1 70.6% 10%;
+    --sidebar-width: 240px;
+
+    /* Status colours */
+    --positive: 142.1 70.6% 45.3%;
+    --negative: 0 72.2% 50.6%;
+    --warning: 38 92% 50%;
+    --neutral: 215 20% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: hsl(var(--background));
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground));
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .fm-card {
+    @apply bg-card border border-border rounded-lg p-4;
+  }
+
+  .fm-stat-value {
+    @apply text-2xl font-bold tabular-nums;
+  }
+
+  .fm-stat-label {
+    @apply text-xs text-muted-foreground uppercase tracking-wider;
+  }
+
+  .ticker-wrap {
+    @apply overflow-hidden whitespace-nowrap;
+  }
+
+  .ticker-content {
+    @apply inline-block animate-ticker;
+  }
+
+  .glass-panel {
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+}
