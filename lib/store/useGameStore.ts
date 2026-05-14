@@ -348,8 +348,8 @@ export const useGameStore = create<GameState & ExtendedState & GameActions>()(
             }
           : { ...defaultWorldState };
 
-        // Build NPCs: use scenario cabinet first, then random MPs
-        const npcs = generateInitialNPCs(party, sc?.cabinet ?? []);
+        // Build NPCs: use scenario cabinet first, then dynamically generate the remaining seats up to 650
+        const npcs = generateInitialNPCs(party, sc);
         const inbox = buildWelcomeEmails(player, ws);
         
         // Generate immediate staff team

@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
-import { NPC, Party, Role, PolicyArea, NPCTrait, ScenarioCabinetMember } from "./store/types";
+import { NPC, Party, Role, PolicyArea, NPCTrait, ScenarioCabinetMember, GeneratedScenario } from "./store/types";
 
 // ─── UK Constituencies (sample 80) ───────────────────────────────────────────
 
@@ -67,60 +67,53 @@ export const CONSTITUENCIES: string[] = [
 
 // ─── NPC Name Pool ────────────────────────────────────────────────────────────
 
-const FIRST_NAMES = [
-  "James", "Sarah", "Michael", "Emma", "David", "Helen", "Andrew", "Karen",
-  "Robert", "Lisa", "William", "Claire", "Richard", "Susan", "Thomas", "Patricia",
-  "Charles", "Margaret", "George", "Elizabeth", "Edward", "Angela", "Henry",
-  "Catherine", "Oliver", "Rachel", "Harry", "Victoria", "Jack", "Jennifer",
-  "Priya", "Rishi", "Yvette", "Harriet", "Wes", "Jess", "Kemi", "Bim",
-  "Sadiq", "Anas", "Keir", "Bridget", "Darren", "Penny", "Jeremy", "Liz",
-  "Boris", "Jacob", "Rory", "Anna", "Nadia", "Fiona", "Alison", "Diane",
-  "Stella", "Caroline", "Yvonne", "Rosie",
+const NAMES = {
+  whiteMaleFirst: ["James", "Michael", "Robert", "John", "David", "William", "Richard", "Thomas", "Charles", "George", "Edward", "Oliver", "Harry", "Jack", "Jacob", "Rory", "Jeremy", "Boris", "Keir", "Nigel", "Giles", "Tarquin", "Rupert", "Alistair", "Tristan", "Dominic"],
+  whiteFemaleFirst: ["Sarah", "Emma", "Helen", "Claire", "Margaret", "Elizabeth", "Victoria", "Rachel", "Angela", "Catherine", "Harriet", "Penny", "Liz", "Theresa", "Yvette", "Bridget", "Priscilla", "Fiona", "Caroline", "Eleanor", "Pippa", "Jocelyn", "Camilla"],
+  whiteLast: ["Smith", "Jones", "Williams", "Brown", "Davies", "Evans", "Wilson", "Taylor", "Thomas", "Roberts", "Johnson", "Lewis", "Walker", "Wood", "White", "Watson", "Jackson", "Wright", "Green", "Harris", "Cooper", "King", "Rees-Mogg", "Starmer", "Blair", "Gove", "Hunt", "Truss", "Miliband", "Cholmondeley", "Farage", "Fabricant", "Villiers", "Jenkin", "Bone"],
+  asianMaleFirst: ["Rishi", "Sadiq", "Sajid", "Anas", "Tariq", "Imran", "Mohammed", "Ali", "Raj", "Amit", "Rahul", "Zayn", "Humza", "Hassan"],
+  asianFemaleFirst: ["Priya", "Nadia", "Fatima", "Zahra", "Aisha", "Preeti", "Sunita", "Shabana", "Rupa", "Tulip", "Suella", "Priti", "Nusrat"],
+  asianLast: ["Patel", "Khan", "Ahmed", "Ali", "Singh", "Sharma", "Gupta", "Hussain", "Rahman", "Shah", "Begum", "Javid", "Sunak", "Zahawi", "Mahmood"],
+  blackMaleFirst: ["Kwame", "Marcus", "Winston", "David", "Michael", "Samuel", "Joseph", "Clive", "Trevor", "Vaughan", "Chi", "Mark"],
+  blackFemaleFirst: ["Diane", "Kemi", "Ngozi", "Dawn", "Florence", "Abena", "Grace", "Joy", "Marsha", "Bell", "Eleanor", "Kate"],
+  blackLast: ["Adebayo", "Osei", "Boateng", "Smith", "Johnson", "Williams", "Brown", "Abbott", "Badenoch", "Lammy", "Kwarteng", "Cleverly", "Afolami", "Osamor", "Onwurah"]
+};
+
+// ─── Demographics Generators ──────────────────────────────────────────────────
+
+const TORY_PERSONALITIES = [
+  "patrician grandee who believes governance is a duty not a career.",
+  "ex-military figure who values chain of command above all.",
+  "free-market ideologue who advocates for slash-and-burn economics.",
+  "rural traditionalist suspicious of urban modernization.",
+  "City banker turned politician with deep pockets.",
+  "loyalist who would walk off a cliff if the party leader asked.",
+  "Thatcherite purist who regularly rebels against tax rises."
 ];
 
-const LAST_NAMES = [
-  "Smith", "Jones", "Williams", "Brown", "Davies", "Evans", "Wilson", "Taylor",
-  "Thomas", "Roberts", "Johnson", "Lewis", "Walker", "Robinson", "Wood", "Thompson",
-  "White", "Watson", "Jackson", "Wright", "Green", "Harris", "Cooper", "King",
-  "Lee", "Martin", "Clarke", "Patel", "Khan", "Ahmed", "Ali", "Singh",
-  "Sharma", "Gupta", "Rees-Mogg", "Farage", "Gove", "Hunt", "Sunak", "Truss",
-  "Johnson", "Blair", "Starmer", "Reeves", "Cooper", "Streeting", "McFadden",
-  "Ashworth", "Phillips", "Burden", "Flint", "Eagle", "Kendall", "Thornberry",
-  "Abbott", "Lammy", "Miliband", "Balls", "Benn", "Harman", "Burnham",
+const LABOUR_PERSONALITIES = [
+  "former union rep who considers themselves the workers' tribune.",
+  "human rights lawyer built for scrutiny and debate.",
+  "public sector worker intimately familiar with austerity's impact.",
+  "inner-city grassroots campaigner focused on local poverty.",
+  "academic economist who brings data to every argument.",
+  "firebrand idealist who'd rather lose the whip than betray principles.",
+  "soft-spoken intellectual whose Commons speeches are devastating."
 ];
 
-const MINISTERIAL_ROLES: string[] = [
-  "Chancellor of the Exchequer",
-  "Home Secretary",
-  "Foreign Secretary",
-  "Secretary of State for Health",
-  "Secretary of State for Education",
-  "Secretary of State for Defence",
-  "Secretary of State for Housing",
-  "Secretary of State for Environment",
-  "Secretary of State for Transport",
-  "Secretary of State for Work and Pensions",
-  "Attorney General",
-  "Lord Chancellor",
-  "Chief Secretary to the Treasury",
+const LIBDEM_PERSONALITIES = [
+  "local councillor made good, obsessed with pavement politics.",
+  "centrist technocrat who deplores ideological extremes.",
+  "ardent Europhile fighting to rebuild ties with the continent."
 ];
 
-const PERSONALITIES = [
-  "A cautious pragmatist who votes with the party but harbours private doubts",
-  "A firebrand idealist who'd rather lose the whip than betray principles",
-  "A calculating operator who builds alliances across party lines",
-  "A media-hungry backbencher who courts controversy for column inches",
-  "A loyalist who would walk off a cliff if the party leader asked",
-  "A constituency champion who puts local interests above national politics",
-  "An old-guard traditionalist suspicious of modernisation",
-  "A tech-forward moderniser pushing digital government",
-  "A soft-spoken intellectual whose Commons speeches are devastating",
-  "A boisterous populist beloved in their seat but divisive nationally",
-  "A former journalist who knows where all the bodies are buried",
-  "A second-generation immigrant who sees politics as service",
-  "A patrician grandee who believes governance is a duty not a career",
-  "A union-backed MP who considers themselves the workers' tribune",
-  "An ex-military figure who values chain of command above all",
+const GENERAL_PERSONALITIES = [
+  "cautious pragmatist who votes with the party but harbours private doubts.",
+  "calculating operator who builds alliances across party lines.",
+  "media-hungry backbencher who courts controversy for column inches.",
+  "constituency champion who puts local interests above national politics.",
+  "former journalist who knows where all the bodies are buried.",
+  "second-generation immigrant who sees politics as service."
 ];
 
 function randomFrom<T>(arr: T[]): T {
@@ -153,23 +146,96 @@ function randomTraits(): NPCTrait[] {
   return shuffled.slice(0, count);
 }
 
-// ─── Party Distribution for 50 NPCs ──────────────────────────────────────────
+function getPersonality(party: string) {
+  const pool = [...GENERAL_PERSONALITIES];
+  if (party === "Conservative" || party === "Reform UK") pool.push(...TORY_PERSONALITIES, ...TORY_PERSONALITIES);
+  if (party === "Labour" || party === "Green") pool.push(...LABOUR_PERSONALITIES, ...LABOUR_PERSONALITIES);
+  if (party === "Liberal Democrat") pool.push(...LIBDEM_PERSONALITIES, ...LIBDEM_PERSONALITIES);
 
-const PARTY_DISTRIBUTION: Array<{ party: Party; count: number }> = [
-  { party: "Conservative", count: 16 },
-  { party: "Labour", count: 16 },
-  { party: "Liberal Democrat", count: 5 },
-  { party: "SNP", count: 4 },
-  { party: "Green", count: 3 },
-  { party: "Reform UK", count: 4 },
-  { party: "Independent", count: 2 },
-];
+  const baseDesc = randomFrom(pool);
+
+  // Determine implied age prefix based on party demographics
+  let ageGroup = "middle-aged, ";
+  const r = Math.random();
+  if (party === "Conservative" || party === "Reform UK") {
+      if (r < 0.6) ageGroup = "older, ";
+      else if (r < 0.9) ageGroup = "middle-aged, ";
+      else ageGroup = "surprisingly young, ";
+  } else if (party === "Labour" || party === "Green") {
+      if (r < 0.4) ageGroup = "young, ";
+      else if (r < 0.8) ageGroup = "middle-aged, ";
+      else ageGroup = "veteran, older ";
+  } else {
+      if (r < 0.3) ageGroup = "young, ";
+      else if (r < 0.7) ageGroup = "middle-aged, ";
+      else ageGroup = "older, ";
+  }
+
+  const lowerDesc = baseDesc.charAt(0).toLowerCase() + baseDesc.slice(1);
+  return `A ${ageGroup}${lowerDesc}`;
+}
+
+function generateDemographics(party: string, region: string) {
+  // Gender
+  let femaleChance = 0.30;
+  if (party === "Labour" || party === "Green" || party === "Liberal Democrat") femaleChance = 0.50;
+  if (party === "Reform UK") femaleChance = 0.20;
+  const isFemale = Math.random() < femaleChance;
+
+  // Ethnicity 
+  let diversityChance = 0.15;
+  if (region === "London") diversityChance = 0.45;
+  else if (region === "West Midlands" || region === "North West England" || region === "Yorkshire & the Humber") diversityChance = 0.25;
+  else if (region === "Scotland" || region === "Wales" || region === "South West England") diversityChance = 0.05;
+
+  if (party === "Conservative" || party === "Reform UK" || party === "SNP") diversityChance *= 0.6;
+  if (party === "Labour" || party === "Green") diversityChance *= 1.3;
+
+  let ethnicity = "white";
+  if (Math.random() < diversityChance) {
+    ethnicity = Math.random() < 0.6 ? "asian" : "black";
+  }
+
+  let firstNames, lastNames;
+  if (ethnicity === "asian") {
+    firstNames = isFemale ? NAMES.asianFemaleFirst : NAMES.asianMaleFirst;
+    lastNames = NAMES.asianLast;
+  } else if (ethnicity === "black") {
+    firstNames = isFemale ? NAMES.blackFemaleFirst : NAMES.blackMaleFirst;
+    lastNames = NAMES.blackLast;
+  } else {
+    firstNames = isFemale ? NAMES.whiteFemaleFirst : NAMES.whiteMaleFirst;
+    lastNames = NAMES.whiteLast;
+  }
+
+  return `${randomFrom(firstNames)} ${randomFrom(lastNames)}`;
+}
 
 export function generateInitialNPCs(
   playerParty: Party,
-  cabinetFromScenario: ScenarioCabinetMember[] = []
+  scenario: GeneratedScenario | null
 ): NPC[] {
   const npcs: NPC[] = [];
+  const usedConstituencies = new Set<string>();
+
+  const assignConstituency = () => {
+    const region = randomFrom(Object.keys(CONSTITUENCIES_BY_REGION));
+    const baseList = CONSTITUENCIES_BY_REGION[region];
+    let name = randomFrom(baseList);
+
+    // Generate unique constituency names if we run out of the hardcoded 150
+    if (usedConstituencies.has(name)) {
+      const suffixes = ["North", "South", "East", "West", "Central", "Rural"];
+      name = `${name} ${randomFrom(suffixes)}`;
+      while (usedConstituencies.has(name)) {
+        name = `${name} & ${randomFrom(baseList)}`;
+      }
+    }
+    usedConstituencies.add(name);
+    return { name, region };
+  };
+
+  const cabinetFromScenario = scenario?.cabinet || [];
 
   // 1. Seed from AI-generated cabinet members first
   for (const cm of cabinetFromScenario) {
@@ -185,12 +251,14 @@ export function generateInitialNPCs(
     const resolvedRole: Role = roleMap[cm.role] ??
       (isCabinet ? "Cabinet Minister" : "Shadow Cabinet");
 
+    const location = assignConstituency();
+
     npcs.push({
       id: uuidv4(),
       name: cm.name,
       party: cm.party,
       role: resolvedRole,
-      constituency: randomFrom(CONSTITUENCIES),
+      constituency: location.name,
       traits: randomTraits(),
       stances: randomStances(),
       loyaltyToPlayer: cm.party === playerParty ? randomInt(15, 55) : randomInt(-50, 10),
@@ -198,40 +266,64 @@ export function generateInitialNPCs(
       ministerialRole: isCabinet ? cm.role : undefined,
       isInCabinet: isCabinet,
       corruptionLevel: randomInt(0, 30),
-      personalityDescription: cm.description || randomFrom(PERSONALITIES),
+      personalityDescription: cm.description || getPersonality(cm.party),
     });
   }
 
-  // 2. Fill remaining 50 slots with random MPs
-  const targetTotal = Math.max(50, cabinetFromScenario.length + 35);
-  let ministerCount = cabinetFromScenario.filter((c) => c.role === "Cabinet Minister").length;
+  // 2. Fill remaining slots to hit 650 total based on election results
+  const targetCounts: Record<string, number> = {};
+  if (scenario?.results) {
+    for (const [p, result] of Object.entries(scenario.results)) {
+      targetCounts[p] = result.seats;
+    }
+  } else {
+    // Default backup to hit 650 if no scenario exists
+    targetCounts["Labour"] = 412;
+    targetCounts["Conservative"] = 121;
+    targetCounts["Liberal Democrat"] = 72;
+    targetCounts["SNP"] = 43;
+    targetCounts["Reform UK"] = 5;
+    targetCounts["Green"] = 4;
+    targetCounts["Independent"] = 9;
+  }
 
-  for (const { party, count } of PARTY_DISTRIBUTION) {
-    const alreadyAdded = npcs.filter((n) => n.party === party).length;
-    const toAdd = Math.max(0, count - alreadyAdded);
+  let isPlayerPartyCounted = false;
+
+  for (const [partyName, target] of Object.entries(targetCounts)) {
+    const p = partyName as Party;
+    const currentCount = npcs.filter((n) => n.party === p).length;
+    let toAdd = Math.max(0, target - currentCount);
+
+    if (p === playerParty && !isPlayerPartyCounted) {
+      toAdd = Math.max(0, toAdd - 1); // Remove 1 seat allocation for the player
+      isPlayerPartyCounted = true;
+    }
+
     for (let i = 0; i < toAdd; i++) {
-      const firstName = randomFrom(FIRST_NAMES);
-      const lastName = randomFrom(LAST_NAMES);
-      const roles: Role[] = party === playerParty
-        ? ["Junior Minister", "Backbencher", "Parliamentary Private Secretary"]
-        : party === (npcs.find((n) => n.role === "Leader of the Opposition")?.party ?? "Conservative")
-        ? ["Shadow Cabinet", "Backbencher"]
-        : ["Backbencher"];
+      const location = assignConstituency();
+      const name = generateDemographics(p, location.region);
+
+      let role: Role = "Backbencher";
+      if (p === scenario?.governmentParty) {
+        role = randomFrom(["Junior Minister", "Backbencher", "Backbencher", "Parliamentary Private Secretary"]);
+      } else if (p === npcs.find((n) => n.role === "Leader of the Opposition")?.party) {
+        role = randomFrom(["Shadow Cabinet", "Backbencher", "Backbencher"]);
+      }
 
       npcs.push({
         id: uuidv4(),
-        name: `${firstName} ${lastName}`,
-        party,
-        role: randomFrom(roles),
-        constituency: randomFrom(CONSTITUENCIES),
+        name,
+        party: p,
+        role,
+        constituency: location.name,
         traits: randomTraits(),
         stances: randomStances(),
-        loyaltyToPlayer: party === playerParty ? randomInt(20, 60) : randomInt(-40, 20),
+        loyaltyToPlayer: p === playerParty ? randomInt(20, 60) : randomInt(-40, 20),
         personalRelationship: randomInt(-20, 20),
         ministerialRole: undefined,
         isInCabinet: false,
         corruptionLevel: randomInt(0, 40),
-        personalityDescription: randomFrom(PERSONALITIES),
+        personalityDescription: getPersonality(p),
       });
     }
   }
