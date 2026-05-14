@@ -258,10 +258,11 @@ export interface ChatMessage {
 // ─── Settings ────────────────────────────────────────────────────────────────
 
 export interface AISettings {
-  provider: "openai" | "anthropic" | "openrouter";
+  provider: "openai" | "anthropic" | "openrouter" | "custom";
   apiKey: string;
   model: string;
   enabled: boolean;
+  baseUrl?: string;
 }
 
 export interface GameSettings {

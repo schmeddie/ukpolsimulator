@@ -90,6 +90,32 @@ export async function generateAIResponse(opts: GenerateOptions): Promise<string>
     return data.choices[0]?.message?.content ?? "";
   }
 
+  if (settings.provider === "custom") {
+    const base = (settings.baseUrl ?? "").replace(/\/$/, "");
+    if (!base) throw new Error("Custom provider requires a Base URL.");
+    const res = await fetch(`${base}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${settings.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: settings.model,
+        max_tokens: maxTokens,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error((err as { error?: { message?: string } }).error?.message ?? `Custom endpoint error ${res.status}`);
+    }
+    const data = await res.json() as { choices: Array<{ message: { content: string } }> };
+    return data.choices[0]?.message?.content ?? "";
+  }
+
   throw new Error("Unknown AI provider");
 }
 

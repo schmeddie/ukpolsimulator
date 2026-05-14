@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Crown, Key, Eye, EyeOff, Zap, ChevronRight, AlertCircle, CheckCircle, Shield } from "lucide-react";
+import { Crown, Key, Eye, EyeOff, Zap, ChevronRight, AlertCircle, CheckCircle, Shield, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useGameStore } from "@/lib/store/useGameStore";
@@ -15,6 +15,7 @@ const PROVIDERS: Array<{
   placeholder: string;
   models: string[];
   hint: string;
+  custom?: true;
 }> = [
   {
     id: "openai",
@@ -37,6 +38,14 @@ const PROVIDERS: Array<{
     models: ["openai/gpt-4o-mini", "anthropic/claude-haiku"],
     hint: "openrouter.ai",
   },
+  {
+    id: "custom",
+    label: "Custom",
+    placeholder: "API key (or leave blank)",
+    models: [],
+    hint: "OpenAI-compatible endpoint",
+    custom: true,
+  },
 ];
 
 interface Props {
@@ -50,25 +59,40 @@ export function APIKeyGate({ onScenarioReady, onGenerating }: Props) {
   const [provider, setProvider] = useState<AISettings["provider"]>(settings.ai.provider);
   const [model, setModel] = useState(settings.ai.model);
   const [apiKey, setApiKey] = useState(settings.ai.apiKey);
+  const [baseUrl, setBaseUrl] = useState(settings.ai.baseUrl ?? "");
+  const [customModel, setCustomModel] = useState(settings.ai.model);
   const [showKey, setShowKey] = useState(false);
   const [status, setStatus] = useState<"idle" | "testing" | "ok" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const currentProvider = PROVIDERS.find((p) => p.id === provider)!;
+  const isCustom = provider === "custom";
 
   const handleProviderChange = (p: AISettings["provider"]) => {
     setProvider(p);
     const pr = PROVIDERS.find((x) => x.id === p)!;
-    setModel(pr.models[0]);
+    if (!pr.custom) setModel(pr.models[0] ?? "");
     setStatus("idle");
     setErrorMsg(null);
   };
 
-  const handleGenerate = async () => {
-    if (!apiKey.trim()) return;
+  const buildSettings = (): AISettings => ({
+    provider,
+    model: isCustom ? customModel.trim() : model,
+    apiKey: apiKey.trim(),
+    enabled: true,
+    baseUrl: isCustom ? baseUrl.trim() : undefined,
+  });
 
-    const tempSettings: AISettings = { provider, model, apiKey: apiKey.trim(), enabled: true };
-    updateAISettings({ ...tempSettings });
+  const canGenerate = isCustom
+    ? baseUrl.trim().length > 0 && customModel.trim().length > 0
+    : apiKey.trim().length > 0;
+
+  const handleGenerate = async () => {
+    if (!canGenerate) return;
+
+    const tempSettings = buildSettings();
+    updateAISettings(tempSettings);
 
     setStatus("testing");
     setErrorMsg(null);
@@ -79,7 +103,6 @@ export function APIKeyGate({ onScenarioReady, onGenerating }: Props) {
       updateAISettings({ enabled: true });
       onScenarioReady(scenario);
     } catch (err) {
-      // Silently fall back to default scenario if AI fails
       console.warn("Scenario generation failed, using default:", err);
       updateAISettings({ enabled: true });
       onScenarioReady(DEFAULT_SCENARIO);
@@ -97,7 +120,6 @@ export function APIKeyGate({ onScenarioReady, onGenerating }: Props) {
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-primary/5 rounded-full blur-[120px]" />
         <div className="absolute bottom-0 right-1/4 w-[400px] h-[300px] bg-blue-500/5 rounded-full blur-[100px]" />
-        {/* Subtle grid lines */}
         <svg className="absolute inset-0 w-full h-full opacity-[0.03]" xmlns="http://www.w3.org/2000/svg">
           <defs>
             <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
@@ -139,13 +161,13 @@ export function APIKeyGate({ onScenarioReady, onGenerating }: Props) {
           </div>
 
           {/* Provider tabs */}
-          <div className="flex gap-1.5">
+          <div className="grid grid-cols-4 gap-1.5">
             {PROVIDERS.map((p) => (
               <button
                 key={p.id}
                 onClick={() => handleProviderChange(p.id)}
                 className={cn(
-                  "flex-1 py-2 rounded-lg text-xs font-semibold border transition-all",
+                  "py-2 rounded-lg text-xs font-semibold border transition-all",
                   provider === p.id
                     ? "bg-primary/15 border-primary/40 text-primary"
                     : "border-white/10 text-slate-400 hover:border-white/20 hover:text-slate-200"
@@ -156,44 +178,88 @@ export function APIKeyGate({ onScenarioReady, onGenerating }: Props) {
             ))}
           </div>
 
-          {/* Model selector */}
-          <div className="flex gap-1.5">
-            {currentProvider.models.map((m) => (
-              <button
-                key={m}
-                onClick={() => setModel(m)}
-                className={cn(
-                  "flex-1 py-1.5 rounded text-[10px] font-medium border transition-all truncate px-1",
-                  model === m
-                    ? "bg-primary/10 border-primary/30 text-primary"
-                    : "border-white/8 text-slate-500 hover:border-white/15 hover:text-slate-300"
-                )}
-              >
-                {m.split("/").pop()}
-              </button>
-            ))}
-          </div>
+          {/* Model selector (preset providers) */}
+          {!isCustom && currentProvider.models.length > 0 && (
+            <div className="flex gap-1.5">
+              {currentProvider.models.map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setModel(m)}
+                  className={cn(
+                    "flex-1 py-1.5 rounded text-[10px] font-medium border transition-all truncate px-1",
+                    model === m
+                      ? "bg-primary/10 border-primary/30 text-primary"
+                      : "border-white/8 text-slate-500 hover:border-white/15 hover:text-slate-300"
+                  )}
+                >
+                  {m.split("/").pop()}
+                </button>
+              ))}
+            </div>
+          )}
 
-          {/* Key input */}
-          <div className="relative">
-            <Input
-              type={showKey ? "text" : "password"}
-              value={apiKey}
-              onChange={(e) => { setApiKey(e.target.value); setStatus("idle"); setErrorMsg(null); }}
-              placeholder={currentProvider.placeholder}
-              className="pr-10 bg-black/30 border-white/10 text-slate-100 placeholder:text-slate-600 font-mono text-xs focus:border-primary/50"
-            />
-            <button
-              onClick={() => setShowKey(!showKey)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
-            >
-              {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </button>
+          {/* Custom endpoint fields */}
+          {isCustom && (
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide flex items-center gap-1.5">
+                  <Globe className="h-3 w-3" />
+                  Base URL
+                </label>
+                <Input
+                  type="url"
+                  value={baseUrl}
+                  onChange={(e) => { setBaseUrl(e.target.value); setStatus("idle"); setErrorMsg(null); }}
+                  placeholder="https://your-endpoint.com/v1"
+                  className="bg-black/30 border-white/10 text-slate-100 placeholder:text-slate-600 font-mono text-xs focus:border-primary/50"
+                />
+                <p className="text-[10px] text-slate-600">
+                  The path <span className="text-slate-500">/chat/completions</span> will be appended automatically.
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
+                  Model ID
+                </label>
+                <Input
+                  type="text"
+                  value={customModel}
+                  onChange={(e) => { setCustomModel(e.target.value); setStatus("idle"); setErrorMsg(null); }}
+                  placeholder="e.g. llama-3.1-8b or gpt-4o-mini"
+                  className="bg-black/30 border-white/10 text-slate-100 placeholder:text-slate-600 font-mono text-xs focus:border-primary/50"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* API Key input */}
+          <div className="space-y-1.5">
+            {isCustom && (
+              <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
+                API Key
+              </label>
+            )}
+            <div className="relative">
+              <Input
+                type={showKey ? "text" : "password"}
+                value={apiKey}
+                onChange={(e) => { setApiKey(e.target.value); setStatus("idle"); setErrorMsg(null); }}
+                placeholder={currentProvider.placeholder}
+                className="pr-10 bg-black/30 border-white/10 text-slate-100 placeholder:text-slate-600 font-mono text-xs focus:border-primary/50"
+              />
+              <button
+                onClick={() => setShowKey(!showKey)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
+              >
+                {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
           </div>
 
           <div className="text-[10px] text-slate-500 text-center">
-            Get a key at{" "}
-            <span className="text-primary/70">{currentProvider.hint}</span>
+            {isCustom ? "Any OpenAI-compatible endpoint (Ollama, LM Studio, vLLM, etc.)" : (
+              <>Get a key at <span className="text-primary/70">{currentProvider.hint}</span></>
+            )}
           </div>
 
           {/* Status */}
@@ -213,7 +279,7 @@ export function APIKeyGate({ onScenarioReady, onGenerating }: Props) {
           {/* CTA */}
           <Button
             onClick={handleGenerate}
-            disabled={!apiKey.trim() || status === "testing"}
+            disabled={!canGenerate || status === "testing"}
             className="w-full bg-primary hover:bg-primary/90 text-black font-bold h-11 text-sm gap-2"
           >
             {status === "testing" ? (

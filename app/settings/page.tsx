@@ -1,19 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import { Settings, Key, Zap, CheckCircle, AlertCircle, Eye, EyeOff } from "lucide-react";
+import { Settings, Key, Zap, CheckCircle, AlertCircle, Eye, EyeOff, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useGameStore } from "@/lib/store/useGameStore";
 import { generateAIResponse } from "@/lib/ai/aiClient";
 import { cn } from "@/lib/utils";
 import type { AISettings } from "@/lib/store/types";
 
-const PROVIDER_MODELS: Record<AISettings["provider"], string[]> = {
+const PROVIDER_MODELS: Record<Exclude<AISettings["provider"], "custom">, string[]> = {
   openai: ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo"],
   anthropic: ["claude-haiku-4-5-20251001", "claude-sonnet-4-6", "claude-opus-4-7"],
   openrouter: ["openai/gpt-4o-mini", "anthropic/claude-haiku", "meta-llama/llama-3.1-8b-instruct"],
@@ -22,24 +21,41 @@ const PROVIDER_MODELS: Record<AISettings["provider"], string[]> = {
 export default function SettingsPage() {
   const { settings, updateAISettings, updateSettings } = useGameStore();
 
+  const [provider, setProvider] = useState<AISettings["provider"]>(settings.ai.provider);
   const [apiKey, setApiKey] = useState(settings.ai.apiKey);
+  const [model, setModel] = useState(settings.ai.model);
+  const [baseUrl, setBaseUrl] = useState(settings.ai.baseUrl ?? "");
   const [showKey, setShowKey] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<"success" | "error" | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
 
+  const isCustom = provider === "custom";
+
+  const handleProviderChange = (p: AISettings["provider"]) => {
+    setProvider(p);
+    if (p !== "custom") setModel(PROVIDER_MODELS[p][0]);
+    setTestResult(null);
+    setTestError(null);
+  };
+
+  const buildSettings = (): AISettings => ({
+    provider,
+    model,
+    apiKey: apiKey.trim(),
+    enabled: apiKey.trim().length > 4 || isCustom,
+    baseUrl: isCustom ? baseUrl.trim() : undefined,
+  });
+
   const handleSave = () => {
-    updateAISettings({
-      apiKey,
-      enabled: apiKey.length > 8,
-    });
+    updateAISettings(buildSettings());
   };
 
   const handleTest = async () => {
     setTesting(true);
     setTestResult(null);
     setTestError(null);
-    const tempSettings: AISettings = { ...settings.ai, apiKey, enabled: true };
+    const tempSettings = buildSettings();
     try {
       const result = await generateAIResponse({
         settings: tempSettings,
@@ -49,7 +65,7 @@ export default function SettingsPage() {
       });
       if (result) {
         setTestResult("success");
-        updateAISettings({ apiKey, enabled: true });
+        updateAISettings({ ...tempSettings, enabled: true });
       }
     } catch (err) {
       setTestResult("error");
@@ -58,6 +74,8 @@ export default function SettingsPage() {
       setTesting(false);
     }
   };
+
+  const canTest = isCustom ? baseUrl.trim().length > 0 && model.trim().length > 0 : apiKey.trim().length > 0;
 
   return (
     <div className="min-h-screen bg-background">
@@ -89,57 +107,94 @@ export default function SettingsPage() {
             {/* Provider */}
             <div className="space-y-2">
               <Label>AI Provider</Label>
-              <div className="flex gap-2">
-                {(["openai", "anthropic", "openrouter"] as const).map((p) => (
+              <div className="grid grid-cols-4 gap-2">
+                {(["openai", "anthropic", "openrouter", "custom"] as const).map((p) => (
                   <button
                     key={p}
-                    onClick={() => {
-                      updateAISettings({ provider: p, model: PROVIDER_MODELS[p][0] });
-                    }}
+                    onClick={() => handleProviderChange(p)}
                     className={cn(
-                      "px-3 py-1.5 rounded-md text-xs border font-medium transition-all",
-                      settings.ai.provider === p
+                      "px-2 py-1.5 rounded-md text-xs border font-medium transition-all",
+                      provider === p
                         ? "bg-primary/15 border-primary/40 text-primary"
                         : "border-border text-muted-foreground hover:border-border/80"
                     )}
                   >
-                    {p === "openai" ? "OpenAI" : p === "anthropic" ? "Anthropic" : "OpenRouter"}
+                    {p === "openai" ? "OpenAI" : p === "anthropic" ? "Anthropic" : p === "openrouter" ? "OpenRouter" : "Custom"}
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Model */}
-            <div className="space-y-2">
-              <Label>Model</Label>
-              <div className="flex flex-wrap gap-2">
-                {PROVIDER_MODELS[settings.ai.provider].map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => updateAISettings({ model: m })}
-                    className={cn(
-                      "px-2.5 py-1 rounded text-[11px] border transition-all",
-                      settings.ai.model === m
-                        ? "bg-primary/15 border-primary/40 text-primary"
-                        : "border-border text-muted-foreground hover:border-border/80"
-                    )}
-                  >
-                    {m}
-                  </button>
-                ))}
+            {/* Custom endpoint fields */}
+            {isCustom && (
+              <div className="space-y-4 rounded-lg border border-border/60 p-4">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+                  <Globe className="h-3.5 w-3.5" />
+                  Custom OpenAI-Compatible Endpoint
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="baseurl">Base URL</Label>
+                  <Input
+                    id="baseurl"
+                    type="url"
+                    value={baseUrl}
+                    onChange={(e) => setBaseUrl(e.target.value)}
+                    placeholder="https://your-endpoint.com/v1"
+                    className="font-mono text-xs"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    <span className="font-mono text-muted-foreground/70">/chat/completions</span> is appended automatically. Works with Ollama, LM Studio, vLLM, and any OpenAI-compatible API.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="modelid">Model ID</Label>
+                  <Input
+                    id="modelid"
+                    type="text"
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    placeholder="e.g. llama3.1, mistral, gpt-4o-mini"
+                    className="font-mono text-xs"
+                  />
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* Model (preset providers) */}
+            {!isCustom && (
+              <div className="space-y-2">
+                <Label>Model</Label>
+                <div className="flex flex-wrap gap-2">
+                  {PROVIDER_MODELS[provider as Exclude<AISettings["provider"], "custom">].map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => setModel(m)}
+                      className={cn(
+                        "px-2.5 py-1 rounded text-[11px] border transition-all",
+                        model === m
+                          ? "bg-primary/15 border-primary/40 text-primary"
+                          : "border-border text-muted-foreground hover:border-border/80"
+                      )}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* API Key */}
             <div className="space-y-2">
-              <Label htmlFor="apikey">API Key</Label>
+              <Label htmlFor="apikey">
+                API Key{isCustom && <span className="text-muted-foreground font-normal ml-1">(optional if endpoint is unauthenticated)</span>}
+              </Label>
               <div className="relative">
                 <Input
                   id="apikey"
                   type={showKey ? "text" : "password"}
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
-                  placeholder={`sk-... or your ${settings.ai.provider} key`}
+                  placeholder={isCustom ? "Bearer token or leave blank" : `sk-... or your ${provider} key`}
                   className="pr-10 font-mono text-xs"
                 />
                 <button
@@ -175,14 +230,14 @@ export default function SettingsPage() {
             </div>
 
             <div className="flex gap-3">
-              <Button onClick={handleSave} size="sm" disabled={!apiKey.trim()}>
-                Save Key
+              <Button onClick={handleSave} size="sm" disabled={!canTest}>
+                Save
               </Button>
               <Button
                 onClick={handleTest}
                 size="sm"
                 variant="outline"
-                disabled={testing || !apiKey.trim()}
+                disabled={testing || !canTest}
               >
                 {testing ? <><Zap className="mr-2 h-3.5 w-3.5 animate-pulse" />Testing...</> : "Test Connection"}
               </Button>
@@ -239,7 +294,6 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        {/* Back to game */}
         <Button variant="outline" onClick={() => window.history.back()} className="w-full">
           Back to Westminster
         </Button>
